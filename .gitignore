@@ -1,0 +1,17 @@
+# Secrets — NEVER commit
+.env
+.env.*
+.spotify.json
+
+# Virtualenv (739M, rebuild with pip install -r requirements.txt)
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Piper TTS voice model (61M, re-downloadable)
+*.onnx
+*.onnx.json
+
+# Local state
+*.log
