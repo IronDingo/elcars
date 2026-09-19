@@ -15,3 +15,6 @@ __pycache__/
 
 # Local state
 *.log
+
+# ...but do track the template
+!.env.example
