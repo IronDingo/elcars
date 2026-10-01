@@ -13,11 +13,13 @@ Contract:
     'unable-to-comply' and marks the tool_result is_error.
   - confirm=True marks a hard-to-undo / outward action. Brain never runs those
     on first call — it asks the user to say "Computer, yes" first.
-  - fast=True marks a menial, reversible, single-shot action safe for the fast
-    (Haiku) lane. Everything else (typing content, closing, links, locking) is
-    smart-lane only. See the tiered Brain in elcars.py.
+  - compose=True marks an INFORMATIONAL tool whose output is data for the Brain
+    to speak *about*, not a ready-made spoken line. It is exempt from the
+    first-hop short-circuit, so the model always gets a turn to reason over the
+    data instead of reading a raw list aloud.
   - The two Open Channel tools are in MODE_TOOLS; the Brain flips its
-    channel_open flag on them.
+    channel_open flag on them. deep_think is handled in the Brain too — it
+    escalates the turn rather than doing anything itself.
 
 Descriptions are prescriptive ("Use this when the user asks to …") — the model
 reaches for tools conservatively, so the trigger cue earns its keep.
@@ -358,6 +360,17 @@ def close_channel() -> tuple[str, bool]:
 MODE_TOOLS = {"open_channel", "close_channel"}
 
 
+# --- deep_think: escalate the turn to the deep model ----------------------
+# Intercepted by the Brain, which discards the shallow turn unspoken and re-runs
+# it on DEEP_MODEL. The body never executes in normal operation; it exists so
+# the registry stays complete and a stray call degrades to a shrug, not a crash.
+def deep_think() -> tuple[str, bool]:
+    return "Thinking about that properly.", True
+
+
+DEEP_TOOL = "deep_think"
+
+
 # --- registry -------------------------------------------------------------
 @dataclass(frozen=True)
 class Tool:
@@ -366,7 +379,6 @@ class Tool:
     input_schema: dict
     run: Callable[..., tuple[str, bool]]
     confirm: bool = False
-    fast: bool = False          # safe for the fast (Haiku) lane — menial, reversible
     compose: bool = False       # output is DATA for the brain to speak about, not a spoken line
 
 
@@ -383,7 +395,7 @@ TOOLS: list[Tool] = [
          {"type": "object",
           "properties": {"name": _str("App name, e.g. 'firefox', 'terminal', 'files'.")},
           "required": ["name"]},
-         launch_app, fast=True),
+         launch_app),
     Tool("focus_app",
          "Switch focus to an already-open application or window by name. Use for "
          "'switch to …', 'go to my browser', 'bring up …'. Prefers the current "
@@ -391,7 +403,7 @@ TOOLS: list[Tool] = [
          {"type": "object",
           "properties": {"name": _str("App/window name, optionally with a position, e.g. 'terminal', 'top-right kitty'.")},
           "required": ["name"]},
-         focus_app, fast=True),
+         focus_app),
     Tool("list_windows",
          "List the currently open windows — app name, title, workspace, and which is "
          "focused. Use when the user asks what's open / what windows or apps they have, "
@@ -399,7 +411,7 @@ TOOLS: list[Tool] = [
          "windows this way — you are not blind to the desktop (you just can't read the "
          "pixel content of a window).",
          {"type": "object", "properties": {}},
-         list_windows, fast=True),
+         list_windows),
     Tool("type_in_window",
          "Type text into a specific open window by name — focuses it first, then "
          "types. Use for 'write X in the terminal', 'type Y in the Claude Code window'. "
@@ -424,7 +436,7 @@ TOOLS: list[Tool] = [
               "percent": {"type": "integer",
                           "description": "0-100, required only when action is 'set'."}},
           "required": ["action"]},
-         volume, fast=True),
+         volume),
     Tool("media_control",
          "Control media playback (any player). Use for 'pause', 'play', 'next track', "
          "'skip', 'previous'.",
@@ -432,13 +444,13 @@ TOOLS: list[Tool] = [
           "properties": {"action": {"type": "string",
                          "enum": ["play_pause", "next", "previous", "stop"]}},
           "required": ["action"]},
-         media_control, fast=True),
+         media_control),
     Tool("set_brightness",
          "Set screen brightness. Use for 'brightness to 50', 'dim/brighten the screen'.",
          {"type": "object",
           "properties": {"percent": {"type": "integer", "description": "1-100."}},
           "required": ["percent"]},
-         set_brightness, fast=True),
+         set_brightness),
     Tool("type_text",
          "Type text into whatever window is currently focused (voice dictation). Use "
          "when the user asks you to type/write/enter text with no particular window in "
@@ -458,24 +470,24 @@ TOOLS: list[Tool] = [
          "Get the current time and volume. Use when the user asks the time or the "
          "current volume level — you have no clock of your own.",
          {"type": "object", "properties": {}},
-         get_context, fast=True),
+         get_context),
     Tool("fullscreen",
          "Toggle fullscreen on the focused window. Use for 'fullscreen this', "
          "'make it fullscreen', 'exit fullscreen'.",
          {"type": "object", "properties": {}},
-         fullscreen, fast=True),
+         fullscreen),
     Tool("switch_workspace",
          "Switch to another workspace / virtual desktop. Use for 'go to workspace 3', "
          "'next workspace', 'previous desktop'.",
          {"type": "object",
           "properties": {"target": _str("Workspace number, or 'next' / 'previous'.")},
           "required": ["target"]},
-         switch_workspace, fast=True),
+         switch_workspace),
     Tool("screenshot",
          "Take a screenshot of the whole screen (saved to the Pictures folder). Use "
          "for 'take a screenshot', 'grab the screen', 'capture this'.",
          {"type": "object", "properties": {}},
-         screenshot, fast=True),
+         screenshot),
     Tool("lock_screen",
          "Lock the screen. Use for 'lock the screen', 'lock it', 'secure the computer'.",
          {"type": "object", "properties": {}},
@@ -486,7 +498,7 @@ TOOLS: list[Tool] = [
          {"type": "object",
           "properties": {"mode": {"type": "string", "enum": ["float", "tile", "toggle"]}},
           "required": ["mode"]},
-         window_layout, fast=True),
+         window_layout),
     Tool("spotify_play",
          "Play one of the USER'S OWN Spotify playlists — by name or by vibe. Use for 'play "
          "my <name> playlist', 'put on <name>', 'play something calming', 'play 432hz', "
@@ -519,28 +531,38 @@ TOOLS: list[Tool] = [
          "'where's good pasta in Dokki', 'find 5 nice restaurants in Zamalek', 'somewhere for "
          "coffee', 'plan an evening out'. Returns a grounded list of places that genuinely "
          "exist (OpenStreetMap) for YOU to rank and shape into an answer or itinerary using "
-         "your own knowledge of which are well-regarded. Defaults to the user's home area "
-         "(Dokki) when none is named. It has NO star ratings and NO reliable 'open now' — "
-         "don't claim either, and never invent a place or a rating.",
+         "your own knowledge of which are well-regarded. Falls back to the user's "
+         "configured home area when none is named. It has NO star ratings and NO reliable "
+         "'open now' — don't claim either, and never invent a place or a rating.",
          {"type": "object",
           "properties": {
               "query": _str("Kind of place / cuisine / vibe, e.g. 'pasta', 'sushi', "
                             "'coffee', 'romantic dinner'. Leave empty for any."),
-              "area": _str("Neighbourhood, e.g. 'Dokki', 'Zamalek', 'Maadi'. Leave empty "
-                           "for the user's home area.")}},
+              "area": _str("Neighbourhood or city, e.g. 'Zamalek', 'Kreuzberg, Berlin'. "
+                           "Leave empty for the user's home area.")}},
          find_places, compose=True),
     Tool("open_channel",
          "Enter Open Channel mode — stay listening so the user can talk without "
          "saying 'Computer' each time. Use when they ask to open a channel, start a "
          "conversation, chat, or 'keep listening'.",
          {"type": "object", "properties": {}},
-         open_channel, fast=True),
+         open_channel),
     Tool("close_channel",
          "Leave Open Channel mode and go back to requiring 'Computer'. Use when they "
          "ask to close the channel, stop listening, end the conversation, or say "
          "'that's all'.",
          {"type": "object", "properties": {}},
-         close_channel, fast=True),
+         close_channel),
+    Tool("deep_think",
+         "Hand THIS question to a slower, more capable model. Call it alone, as your "
+         "first and only action, when the request genuinely needs careful thought: "
+         "multi-step reasoning, real analysis, composing something substantial, a hard "
+         "technical or philosophical question, or the user explicitly asking you to "
+         "think hard or take your time. Do NOT call it for desktop commands, small "
+         "talk, or anything you can already answer well — it costs the user several "
+         "seconds of silence, so it has to earn them.",
+         {"type": "object", "properties": {}},
+         deep_think),
 ]
 
 REGISTRY = {t.name: t for t in TOOLS}

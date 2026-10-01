@@ -18,3 +18,8 @@ __pycache__/
 
 # ...but do track the template
 !.env.example
+
+# Local source snapshots — the top-level files are canonical. Kept on disk as
+# a personal trail, deliberately out of the published repo.
+milestones/
+*.bak-*

@@ -1,0 +1,25 @@
+# ELCARS — Python dependencies.   pip install -r requirements.txt
+#
+# Floors, not exact pins: this runs on a rolling-release distro, and an app
+# frozen to the month it was written rots. The versions in brackets are the
+# ones the current build was verified against (Python 3.14, 2026-10-01).
+#
+# These are the SIX things pip can give us. The rest of the stack — GTK4,
+# gtk4-layer-shell, PyGObject, PipeWire, portaudio, and the handful of CLI
+# tools ELCARS drives — are system packages, because they talk to hardware and
+# to the compositor. The README lists them; pip will not help you there.
+
+anthropic>=0.121.0          # the brain (Messages API + tool use)   [0.121.0]
+faster-whisper>=1.2.1       # the ears (Whisper base.en, int8, CPU) [1.2.1]
+piper-tts>=1.6.0            # the voice (resident, loaded once)     [1.6.0]
+sounddevice>=0.5.5          # mic in / speaker out, via portaudio   [0.5.5]
+numpy>=2.5.2                # RMS maths on the audio blocks         [2.5.2]
+python-dotenv>=1.2.2        # reads ~/elcars/.env                   [1.2.2]
+
+# Deliberately absent:
+#   PyGObject  — use the distro's (python-gobject); a pip build won't find
+#                the system GTK4 that gtk4-layer-shell has to match.
+#   openwakeword — installed once, never used. ELCARS gates on the Whisper
+#                transcript instead; see the README on why that stayed.
+#   soundfile  — was needed when Piper ran as a subprocess writing WAVs. It
+#                doesn't any more.

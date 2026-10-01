@@ -64,12 +64,25 @@ Hands-free voice control for the desktop. Everything below is spoken.
 - “Computer, **open my resume**” · “open that **PDF**” · “show me the **screenshot** I took”.
 - Many matches? It reads back a few and asks which — just say the one you want.
 
+### Your Spotify playlists
+- “Computer, **play my chill playlist**” · “put on **Discover Weekly**”
+- “Computer, **play something calming**” · “play **432hz**” · “play **rain sounds**”
+- It searches **your own playlists** by name, or by what you're after — say the mood and it picks. Spotify opens itself if it isn't running (give it a moment).
+- Playlists only, and playback needs **Premium**. For pause / next / previous, see *Sound & screen* above.
+
+### Somewhere to eat or go out
+- “Computer, **where's good pasta nearby?**” · “**find five nice restaurants** in Zamalek”
+- “Computer, somewhere for **coffee**” · “**plan an evening out**”
+- Real places from the map, which it then recommends between. **No star ratings and no opening hours** — it won't pretend otherwise, and it won't invent a place.
+- It's for **planning only**: no directions, no “take me there.”
+
 ### Web & info
 - “Computer, **open** youtube.com” · “go to github dot com”
 - “Computer, **what time is it?**”
 
 ### Just talking
 - Ask it anything — “Computer, tell me a joke”, “what’s the capital of Japan?”
+- “Computer, **think hard about** …” — hands it to the deeper model (see *Two speeds*).
 
 ---
 
@@ -92,11 +105,15 @@ Not sure what’s open? “**What windows do I have?**” lists them.
 
 ---
 
-## Two speeds (why some replies are instant)
+## Two speeds (why some replies take longer)
 
-Simple commands (open an app, volume, workspace, screenshot, the time) run on a **fast** model — near-instant. Anything needing judgment (typing content, closing, questions, ambiguity) is automatically handed to a **smarter** model. You’ll see `lane: fast` or `lane: smart` in the terminal log.
+Every command goes to the same model, and most come back in about four seconds.
 
-**Safety:** the fast model is only ever given the harmless, reversible tools — it *cannot* type, close, lock, or open links; those always go to the smart model, and closing still asks you first. ELCARS has no ability to install software, delete files, or run arbitrary commands at all.
+When a question genuinely needs thinking about — real analysis, something to compose, a hard problem — it hands that question to a slower, deeper model instead, and the dot sits lilac for a few seconds more. You can ask for this directly: “Computer, **think hard** about this”, “take your time with this one.”
+
+The handover is silent. The first model’s half-answer is thrown away before you hear any of it, so one question never gets two replies. The terminal log says `escalating to claude-opus-5`.
+
+**Safety:** ELCARS can only do the things in this manual — there is no tool for installing software, deleting files, or running commands, so no way of asking produces one. Two things worth knowing anyway: it can **type into whatever window is focused**, so a focused terminal is a focused terminal; and **closing a window asks first**, because it’s the one action you can’t undo by saying the opposite.
 
 ---
 

@@ -2,8 +2,9 @@
 """EmanueLCARS (ELCARS) — Places: find real local spots via OpenStreetMap.
 
 "The eyes on the map." A lean, stdlib-only finder over OpenStreetMap — no key,
-no card, no account. Nominatim geocodes an area (default: home) and Overpass
-returns the real food/drink POIs there (name, kind, cuisine, hours-if-tagged).
+no card, no account. Nominatim geocodes an area (the spoken one, else
+ELCARS_HOME_AREA) and Overpass returns the real food/drink POIs there (name,
+kind, cuisine, hours-if-tagged).
 
 Like spotify.py and files.py, it doesn't try to be clever: it hands a grounded,
 real list of places back to the brain, which ranks them, layers its own
@@ -22,10 +23,18 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import os
 import urllib.parse
 import urllib.request
 
-HOME_AREA = "Dokki, Giza, Egypt"      # default when the user doesn't name a place
+# Where to look when the user doesn't say. Read from the environment at call
+# time, so there's no import-order trap and no clone of this repo inherits
+# someone else's city: ELCARS_HOME_AREA is the fallback area ("Dokki, Giza,
+# Egypt"), and ELCARS_HOME_CITY ("Cairo, Egypt") is appended to a bare
+# neighbourhood so Nominatim can place it. Both live in ~/elcars/.env.
+HOME_AREA_VAR = "ELCARS_HOME_AREA"
+HOME_CITY_VAR = "ELCARS_HOME_CITY"
+
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
 OVERPASS_ENDPOINTS = [                 # public instances 504 under load; retry + fall back
     "https://overpass-api.de/api/interpreter",
@@ -150,8 +159,12 @@ def find(query: str = "", area: str = "") -> tuple[str, bool]:
     """Find real venues in `area` (default home) for the brain to reason over.
     Returns a grounded list; the brain ranks it, adds its own knowledge of which
     are well-regarded, and composes. Mirrors files.open_file's data-back contract."""
-    where = (area or "").strip() or HOME_AREA
-    coord = _geocode(where if "," in where else f"{where}, Cairo, Egypt")
+    where = (area or "").strip() or os.environ.get(HOME_AREA_VAR, "").strip()
+    if not where:
+        return ("No default area is configured. Ask the user which neighbourhood or "
+                "city to look in, then call find_places again with it."), False
+    city = os.environ.get(HOME_CITY_VAR, "").strip()
+    coord = _geocode(where if ("," in where or not city) else f"{where}, {city}")
     if not coord:
         return f"I couldn't find {where} on the map.", False
 

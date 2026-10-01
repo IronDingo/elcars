@@ -14,17 +14,18 @@ How it works — one clean shot each time:
   - Open Channel: "Computer, open channel" lifts the wake-lock so you can talk
     freely; "close channel" (or 45 s of quiet) re-locks it. The HUD frame glows.
 
-One brain: Sonnet handles every turn with the full toolset. The old Haiku
-reflex tier was removed — it cost a discarded round-trip on anything
-conversational and bought ~0.8 s on trivial commands. Menial verbs belong in a
-local, model-free reflex (reflex.py); DEEP_MODEL is reserved for hard
-reasoning.
+One brain, two gears: MODEL (Sonnet) takes every turn with the full toolset.
+When a request genuinely needs more thought the model calls deep_think — the
+shallow turn is discarded unspoken and re-run on DEEP_MODEL (Opus), so the deep
+lane costs nothing on the hundred ordinary commands that never ask for it. The
+old Haiku reflex tier was removed: it burned a wasted round-trip on everything
+conversational to save ~0.8 s on the trivial. Menial verbs belong in a local,
+model-free reflex — deterministic, free, offline — which is not built yet.
 
 Run:  ~/elcars/.venv/bin/python ~/elcars/elcars.py
 """
 
 import logging
-import sys
 import time
 from pathlib import Path
 
@@ -50,8 +51,8 @@ WAKE_WORD = "computer"
 MIC_GAIN = 8.0                             # RMS -> 0..1 VU *display* scaling only (visual)
 SPEECH_RATIO = 3.0                         # detect: speech must exceed room noise × this …
 NOISE_FLOOR_MIN = 0.010                    # … and clear this raw-RMS floor (dead silence can't trigger)
-MODEL = "claude-sonnet-5"                  # the brain: everything the reflex can't do
-DEEP_MODEL = "claude-opus-5"               # deep lane: hard reasoning, on request or on deep_think
+MODEL = "claude-sonnet-5"                  # the brain: every turn starts here
+DEEP_MODEL = "claude-opus-5"               # deep lane: re-runs a turn the model flags via deep_think
 MAX_HISTORY = 30                           # messages kept for context (a tool turn adds 3-4)
 MAX_TOOL_HOPS = 5                          # cap the tool loop so it can't spin
 CHANNEL_TIMEOUT = 45                       # Open Channel re-locks after this many quiet seconds
@@ -95,17 +96,18 @@ _voice = PiperVoice.load(PIPER_VOICE)   # once at import (~1.4 s), not per utter
 
 # --- the brain seam (Sonnet by default, Opus on the deep lane) ------------
 class Brain:
-    """One brain: MODEL answers every turn with the full toolset. Set .deep to
-    route the next turn to DEEP_MODEL instead. reply() → (text, hud_state)."""
+    """One brain, two gears: MODEL answers every turn with the full toolset; a
+    deep_think call re-runs that turn on DEEP_MODEL. reply() → (text, hud_state)."""
 
     def __init__(self, on_status=lambda s: None):
         self.client = anthropic.Anthropic()   # reads ANTHROPIC_API_KEY from env
         self.history = []
         self.on_status = on_status            # push HUD states live as tools fire
         self._tools = toolkit.anthropic_tools()
+        # the deep lane can't escalate again — it IS the escalation
+        self._deep_tools = [t for t in self._tools if t["name"] != toolkit.DEEP_TOOL]
         self._pending = None                  # (name, input-key) awaiting spoken confirmation
         self.channel_open = False             # Open Channel: wake-lock lifted while True
-        self.deep = False                     # route the next turn to DEEP_MODEL
 
     @staticmethod
     def _key(inp):
@@ -130,8 +132,12 @@ class Brain:
 
     def reply(self, prompt: str) -> tuple[str, str]:
         try:
-            text, state, history, pending, channel = self._attempt(
-                prompt, DEEP_MODEL if self.deep else MODEL, SYSTEM, self._tools)
+            result = self._attempt(prompt, MODEL, SYSTEM, self._tools)
+            if result is None:            # the model asked for the deep lane
+                log.info("escalating to %s", DEEP_MODEL)
+                self.on_status("processing")
+                result = self._attempt(prompt, DEEP_MODEL, SYSTEM, self._deep_tools)
+            text, state, history, pending, channel = result
             self.history, self._pending, self.channel_open = history, pending, channel
             return text, state
         except anthropic.BadRequestError as e:
@@ -152,7 +158,11 @@ class Brain:
     def _attempt(self, prompt, model, system, tools):
         """Run the model's tool loop on a TRIAL copy of history, returning
         (text, state, history, pending, channel) and leaving self.* untouched
-        until reply() commits it."""
+        until reply() commits it.
+
+        Returns None if the model called deep_think — the trial is thrown away
+        whole, before any tool runs, so the turn leaves no trace to unpick and
+        reply() can simply run it again on the deeper model."""
         history = self.history + [{"role": "user", "content": prompt}]
         just_confirmed = self._pending
         pending = None
@@ -172,6 +182,8 @@ class Brain:
                 break
 
             blocks = [b for b in resp.content if b.type == "tool_use"]
+            if any(b.name == toolkit.DEEP_TOOL for b in blocks):
+                return None      # checked before anything runs — no side effects to undo
             results = []
             for b in blocks:
                 spec = toolkit.REGISTRY.get(b.name)

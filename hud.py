@@ -7,7 +7,7 @@ the dot. When ELCARS is listening, a decibel meter blooms upward above
 it. Near-invisible until it matters. While Open Channel is active a soft
 glowing frame breathes around the whole HUD.
 
-STANDALONE demo: a fake state cycler walks the 8 states (and toggles the
+STANDALONE demo: a fake state cycler walks the seven states (and toggles the
 Open Channel frame each pass) so the look can be signed off.
 
 Run:  ~/elcars/.venv/bin/python ~/elcars/hud.py
@@ -37,10 +37,9 @@ LILAC  = "#CC99CC"
 BLUE   = "#9999FF"
 SALMON = "#CC6666"
 
-# --- the 8 states: name -> (css class, dot colour) ------------------------
+# --- the seven states: name -> (css class, dot colour) --------------------
 STATES = {
     "standby":          ("st-standby", BLUE),
-    "wake":             ("st-wake",    ORANGE),
     "capturing":        ("st-capture", PEACH),
     "processing":       ("st-process", LILAC),
     "responding":       ("st-respond", ORANGE),
